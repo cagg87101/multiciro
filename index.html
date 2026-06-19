@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VideoMaker Ciro">
+<title>VideoMaker Ciro V2</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{--bg:#0b1020;--panel:#121a33;--text:#fff;--muted:#cbd5e1;--accent:#38bdf8;--good:#22c55e;--danger:#ef4444;--warn:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:linear-gradient(160deg,#050816,#101827);color:var(--text)}
+header{padding:calc(14px + env(safe-area-inset-top)) 14px 12px;background:rgba(5,10,25,.92);position:sticky;top:0;z-index:5;border-bottom:1px solid rgba(255,255,255,.1)}
+h1{font-size:20px;margin:0}.sub{font-size:13px;color:var(--muted);margin-top:3px}
+main{padding:14px;display:grid;gap:12px;max-width:1100px;margin:auto}
+.card{background:rgba(18,26,51,.94);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:14px}
+label{display:block;color:var(--muted);font-size:13px;margin:8px 0 4px}
+input,textarea,select,button{width:100%;border:none;border-radius:12px;padding:11px;font-size:15px}
+input,textarea,select{background:#071126;color:#fff;border:1px solid rgba(255,255,255,.12)}
+textarea{min-height:120px;resize:vertical;line-height:1.45}
+button{font-weight:800;color:#fff;background:#334155;margin-top:8px}
+.primary{background:var(--accent);color:#06101f}.good{background:var(--good)}.danger{background:var(--danger)}.warn{background:var(--warn);color:#111}
+.grid{display:grid;grid-template-columns:1fr;gap:10px}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+canvas{width:100%;background:#000;border-radius:16px;border:1px solid rgba(255,255,255,.12)}
+.small{font-size:12px;color:var(--muted)}
+#downloadArea a{color:white;font-weight:900}
+@media(min-width:850px){.grid{grid-template-columns:1fr 1fr}.buttons{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<header>
+<h1>VideoMaker Ciro V2</h1>
+<div class="sub">Crea videos descargables con texto, imágenes y escenas.</div>
+</header>
+
+<main>
+<section class="card">
+<div class="grid">
+<div>
+<label>Título del video</label>
+<input id="title" placeholder="Ejemplo: La biodiversidad de la Sierra Nevada">
+<label>Texto / escenas</label>
+<textarea id="script" placeholder="Escribe una idea por línea. Cada línea será una escena del video."></textarea>
+</div>
+<div>
+<label>Formato</label>
+<select id="format">
+<option value="vertical">Vertical 9:16 — Reels / Shorts / TikTok</option>
+<option value="horizontal">Horizontal 16:9 — YouTube / clase</option>
+<option value="square">Cuadrado 1:1</option>
+</select>
+
+<label>Duración por escena</label>
+<select id="sceneDuration">
+<option value="3">3 segundos</option>
+<option value="4" selected>4 segundos</option>
+<option value="5">5 segundos</option>
+<option value="6">6 segundos</option>
+</select>
+
+<label>Estilo</label>
+<select id="style">
+<option value="dark">Oscuro elegante</option>
+<option value="blue">Azul educativo</option>
+<option value="green">Agroambiental</option>
+<option value="warm">Cálido institucional</option>
+</select>
+
+<label>Subir imágenes opcionales</label>
+<input id="images" type="file" accept="image/*" multiple>
+<p class="small">Si subes imágenes, la app las usará como fondo de escenas. Si no, genera fondos automáticos.</p>
+</div>
+</div>
+
+<div class="buttons">
+<button class="primary" id="previewBtn">Vista previa</button>
+<button class="good" id="makeBtn">Crear video</button>
+<button id="stopBtn">Detener</button>
+<button class="danger" id="clearBtn">Borrar</button>
+</div>
+<p class="small" id="status">Listo.</p>
+</section>
+
+<section class="card">
+<canvas id="canvas"></canvas>
+<div id="downloadArea" class="small"></div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const canvas=$("canvas"), ctx=canvas.getContext("2d");
+let images=[], recorder=null, chunks=[], previewTimer=null, stopFlag=false;
+
+function setSize(){
+ const f=$("format").value;
+ if(f==="vertical"){canvas.width=720;canvas.height=1280}
+ else if(f==="horizontal"){canvas.width=1280;canvas.height=720}
+ else{canvas.width=1080;canvas.height=1080}
+}
+function wrapText(text,x,y,maxWidth,lineHeight){
+ const words=text.split(" "); let line="", lines=[];
+ for(let n=0;n<words.length;n++){
+  let test=line+words[n]+" ";
+  if(ctx.measureText(test).width>maxWidth && n>0){lines.push(line);line=words[n]+" "}
+  else line=test;
+ }
+ lines.push(line);
+ lines.forEach((l,i)=>ctx.fillText(l.trim(),x,y+i*lineHeight));
+ return lines.length;
+}
+function gradient(style){
+ const g=ctx.createLinearGradient(0,0,canvas.width,canvas.height);
+ if(style==="green"){g.addColorStop(0,"#052e16");g.addColorStop(1,"#14532d")}
+ else if(style==="blue"){g.addColorStop(0,"#082f49");g.addColorStop(1,"#1e3a8a")}
+ else if(style==="warm"){g.addColorStop(0,"#431407");g.addColorStop(1,"#92400e")}
+ else{g.addColorStop(0,"#020617");g.addColorStop(1,"#111827")}
+ return g;
+}
+function drawImageCover(img){
+ const cw=canvas.width,ch=canvas.height,iw=img.width,ih=img.height;
+ const scale=Math.max(cw/iw,ch/ih); const nw=iw*scale,nh=ih*scale;
+ const x=(cw-nw)/2,y=(ch-nh)/2;
+ ctx.drawImage(img,x,y,nw,nh);
+ ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(0,0,cw,ch);
+}
+function drawScene(text,index,total,progress=0){
+ setSize();
+ const title=$("title").value||"VideoMaker Ciro";
+ const style=$("style").value;
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ if(images.length){drawImageCover(images[index%images.length])}
+ else{ctx.fillStyle=gradient(style);ctx.fillRect(0,0,canvas.width,canvas.height)}
+ const margin=canvas.width*.08;
+ ctx.fillStyle="rgba(255,255,255,.12)";
+ ctx.fillRect(margin,canvas.height*.08,canvas.width-margin*2,6);
+ ctx.fillStyle="#fff";
+ ctx.font=`bold ${Math.round(canvas.width*.045)}px Arial`;
+ ctx.textAlign="center";
+ ctx.fillText(title,canvas.width/2,canvas.height*.15);
+ ctx.font=`bold ${Math.round(canvas.width*.07)}px Arial`;
+ ctx.fillStyle="#fff";
+ ctx.shadowColor="rgba(0,0,0,.9)";ctx.shadowBlur=8;
+ wrapText(text,canvas.width/2,canvas.height*.42,canvas.width*.82,Math.round(canvas.width*.085));
+ ctx.shadowBlur=0;
+ ctx.font=`${Math.round(canvas.width*.032)}px Arial`;
+ ctx.fillStyle="rgba(255,255,255,.85)";
+ ctx.fillText(`Escena ${index+1} de ${total}`,canvas.width/2,canvas.height*.88);
+ ctx.fillStyle="#38bdf8";
+ ctx.fillRect(margin,canvas.height*.92,(canvas.width-margin*2)*progress,8);
+}
+function getScenes(){
+ let lines=$("script").value.split("\\n").map(x=>x.trim()).filter(Boolean);
+ if(!lines.length) lines=["Escribe el contenido de tu video.","Cada línea será una escena.","Luego presiona Crear video."];
+ return lines;
+}
+function loadImages(){
+ return new Promise(resolve=>{
+  const files=[...$("images").files]; images=[];
+  if(!files.length) return resolve();
+  let loaded=0;
+  files.forEach(file=>{
+   const img=new Image();
+   img.onload=()=>{images.push(img);loaded++;if(loaded===files.length)resolve()};
+   img.src=URL.createObjectURL(file);
+  });
+ });
+}
+async function preview(){
+ await loadImages(); stopPreview();
+ const scenes=getScenes(); let i=0,p=0;
+ drawScene(scenes[0],0,scenes.length,0);
+ previewTimer=setInterval(()=>{
+  p+=0.02;
+  if(p>=1){p=0;i=(i+1)%scenes.length}
+  drawScene(scenes[i],i,scenes.length,p);
+ },80);
+}
+function stopPreview(){if(previewTimer){clearInterval(previewTimer);previewTimer=null}}
+async function makeVideo(){
+ await loadImages(); stopPreview(); stopFlag=false; $("downloadArea").innerHTML="";
+ const scenes=getScenes(); const dur=Number($("sceneDuration").value);
+ setSize();
+ const stream=canvas.captureStream(30);
+ const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
+ chunks=[]; recorder=new MediaRecorder(stream,{mimeType:mime});
+ recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+ recorder.onstop=()=>{
+  const blob=new Blob(chunks,{type:"video/webm"});
+  const url=URL.createObjectURL(blob);
+  const name="videomaker_ciro_"+new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")+".webm";
+  $("downloadArea").innerHTML=`Video listo: <a href="${url}" download="${name}">Descargar video</a><br>Nota: algunos iPhone/iPad guardan mejor .webm desde Archivos.`;
+  $("status").textContent="Video generado.";
+ };
+ recorder.start();
+ $("status").textContent="Generando video...";
+ const framesPerScene=dur*30;
+ for(let i=0;i<scenes.length;i++){
+  for(let f=0;f<framesPerScene;f++){
+   if(stopFlag){recorder.stop();return}
+   drawScene(scenes[i],i,scenes.length,f/framesPerScene);
+   await new Promise(r=>setTimeout(r,1000/30));
+  }
+ }
+ recorder.stop();
+}
+$("images").onchange=loadImages;
+$("previewBtn").onclick=preview;
+$("makeBtn").onclick=makeVideo;
+$("stopBtn").onclick=()=>{stopFlag=true;stopPreview(); if(recorder&&recorder.state==="recording")recorder.stop(); $("status").textContent="Detenido."};
+$("clearBtn").onclick=()=>{$("title").value="";$("script").value="";$("images").value="";images=[];$("downloadArea").innerHTML="";setSize();ctx.clearRect(0,0,canvas.width,canvas.height)};
+setSize();drawScene("VideoMaker Ciro",0,1,0);
+if("serviceWorker"in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+</script>
+</body>
+</html>

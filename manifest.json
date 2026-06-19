@@ -1,0 +1,10 @@
+{
+"name":"VideoMaker Ciro V2",
+"short_name":"VideoMaker",
+"start_url":"./index.html",
+"display":"standalone",
+"background_color":"#101827",
+"theme_color":"#101827",
+"orientation":"any",
+"icons":[]
+}
